@@ -45,6 +45,7 @@ from string import Template
 import config
 import ipc
 import theme
+from view_navigation import target_index
 # The one thing the daemon asks the renderers: which engine the workers will
 # use for office documents, for the cache key. renderers imports nothing at
 # module level, so this loads no parser here.
@@ -52,7 +53,7 @@ from renderers import office_suite
 
 from PySide6.QtCore import (
     Qt, QUrl, QEvent, QPoint, QRect, QSize, QObject, QSocketNotifier,
-    QThreadPool, QTimer, QFileInfo, QMimeDatabase, QStandardPaths, Signal,
+    QThreadPool, QTimer, QProcess, QFileInfo, QMimeDatabase, QStandardPaths, Signal,
 )
 from PySide6.QtGui import (
     QAction, QFont, QGuiApplication, QIcon, QImage, QKeySequence, QRegion,
@@ -1353,23 +1354,40 @@ class QuickView(QWidget):
                 (Qt.Key_Space, lambda: self.dismiss("space")),
                 (Qt.Key_Escape, lambda: self.dismiss("escape")),
                 (Qt.Key_Q, lambda: self.dismiss("q")),
-                (Qt.Key_Left, lambda: self.step_sibling(-1)),
-                (Qt.Key_Right, lambda: self.step_sibling(+1)),
+                (Qt.Key_Left, lambda: self.navigate_view("left")),
+                (Qt.Key_Right, lambda: self.navigate_view("right")),
                 (Qt.Key_Return, self.open_externally),
                 (Qt.Key_Enter, self.open_externally),
             )
         ]
-        # Up/Down browse images without intercepting document scrolling.
+        # Optional Up/Down file navigation for all preview types.
+        self._view_snapshot = None
+        self._view_is_list = False
+        self._navigation_axis = "horizontal"
+        self._view_process = None
+        self._view_token = 0
+        self._view_loading = False
+        self._view_request = None
+        self._view_buffer = b""
+        self._view_timer = QTimer(self)
+        self._view_timer.setSingleShot(True)
+        self._view_timer.timeout.connect(self._view_timeout)
+        self._view_pending = []
+        self._view_error = "No Dolphin view snapshot"
         self._image_navigation = False
         self._vertical_nav_shortcuts = [
             QShortcut(QKeySequence(key), self, activated=callback)
             for key, callback in (
-                (Qt.Key_Up, lambda: self.step_sibling(-1)),
-                (Qt.Key_Down, lambda: self.step_sibling(+1)),
+                (Qt.Key_Up, lambda: self.navigate_view("up")),
+                (Qt.Key_Down, lambda: self.navigate_view("down")),
             )
         ]
         for shortcut in self._vertical_nav_shortcuts:
             shortcut.setEnabled(False)
+        self._start_view_helper()
+        QApplication.instance().aboutToQuit.connect(
+            lambda: self._view_process.kill() if self._view_process is not None else None
+        )
         QShortcut(
             QKeySequence(Qt.CTRL | Qt.Key_F), self,
             activated=self.open_find,
@@ -1383,6 +1401,11 @@ class QuickView(QWidget):
         """Hide the preview but keep the process resident for instant reuse."""
         if self.isVisible():
             log.debug("dismissed (%s)", reason)
+        self._view_token += 1
+        self._view_loading = False
+        self._view_request = None
+        self._view_timer.stop()
+        self._view_pending = []
         self.clear_content()
         self.hide()
         # The next preview starts centred again, whatever this one was
@@ -1609,6 +1632,105 @@ class QuickView(QWidget):
             QDesktopServices.openUrl(QUrl.fromLocalFile(self.current_path))
             self.dismiss("opened externally")
 
+    def _start_view_helper(self):
+        process = QProcess(self)
+        self._view_process = process
+        self._view_buffer = b""
+        process.started.connect(self._send_view_request)
+        process.readyReadStandardOutput.connect(self._read_view_snapshot)
+
+        def stopped(*_):
+            if self._view_process is process:
+                self._view_process = None
+                self._view_loading = False
+                self._view_timer.stop()
+                self._view_error = "Dolphin view helper stopped"
+            process.deleteLater()
+
+        process.finished.connect(stopped)
+        process.errorOccurred.connect(lambda *_: stopped() if process.state() == QProcess.NotRunning else None)
+        process.start("/usr/bin/python", [os.path.join(os.path.dirname(__file__), "dolphin_view.py"), "--server"])
+
+    def _send_view_request(self):
+        process = self._view_process
+        if self._view_request and process is not None and process.state() == QProcess.Running:
+            process.write((json.dumps(self._view_request) + "\n").encode())
+            self._view_request = None
+
+    def _read_view_snapshot(self):
+        if self._view_process is None:
+            return
+        self._view_buffer += bytes(self._view_process.readAllStandardOutput())
+        while b"\n" in self._view_buffer:
+            line, self._view_buffer = self._view_buffer.split(b"\n", 1)
+            try:
+                data = json.loads(line)
+            except ValueError:
+                continue
+            if data.get("token") != self._view_token:
+                continue  # A closed preview or a newer selection superseded this request.
+            self._view_loading = False
+            self._view_timer.stop()
+            self._view_snapshot = data.get("items")
+            self._view_error = data.get("error", "No Dolphin items returned")
+            if self._view_snapshot:
+                self._view_is_list = len({i["rect"][0] for i in self._view_snapshot}) <= 1
+                self._set_nav_shortcuts(True)
+                if self._image_navigation:
+                    self._prefetch_neighbors()
+                log.info("navigation: captured %d Dolphin items in %s ms",
+                         len(self._view_snapshot), data.get("elapsed_ms", "?"))
+                pending, self._view_pending = self._view_pending, []
+                for direction in pending:
+                    self.navigate_view(direction)
+            else:
+                log.warning("navigation: %s", self._view_error)
+                self._view_pending = []
+
+    def _view_timeout(self):
+        self._view_loading = False
+        self._view_pending = []
+        self._view_error = "Dolphin view lookup timed out"
+        if self._view_process is not None:
+            self._view_process.kill()
+        log.warning("navigation: %s", self._view_error)
+
+    def _load_dolphin_view(self, path):
+        self._navigation_axis = "horizontal"
+        self._view_token += 1
+        self._view_snapshot = None
+        self._view_is_list = False
+        self._view_pending = []
+        self._view_loading = True
+        self._view_error = "Dolphin view snapshot is loading"
+        self._view_request = {"token": self._view_token, "path": path}
+        self._view_timer.start(6000)
+        if self._view_process is None:
+            self._start_view_helper()
+        else:
+            self._send_view_request()
+
+    def navigate_view(self, direction):
+        self._navigation_axis = "vertical" if direction in ("up", "down") else "horizontal"
+        if len(self.selection) > 1:
+            self.step_sibling(-1 if direction in ("left", "up") else 1)
+            return
+        if self._view_loading:
+            if len(self._view_pending) < 20:
+                self._view_pending.append(direction)
+            return
+        if not self._view_snapshot:
+            log.warning("navigation unavailable: %s", self._view_error)
+            self.titlebar.setToolTip(self._view_error)
+            return
+        target = target_index(self._view_snapshot, self.current_path, direction)
+        if target is not None:
+            path = self._view_snapshot[target]["path"]
+            if path != self.current_path:
+                self.selection = [path]
+                self.sel_index = 0
+                self.show_file(path)
+
     def step_sibling(self, delta: int):
         # With a multi-file selection, ← → page through it (like Quick Look
         # on several selected files); otherwise walk the folder's siblings.
@@ -1643,6 +1765,15 @@ class QuickView(QWidget):
     def show_files(self, paths, index: int = 0):
         self.selection = [os.path.abspath(p) for p in paths]
         self.sel_index = max(0, min(index, len(self.selection) - 1))
+        if len(self.selection) == 1:
+            self._load_dolphin_view(self.selection[0])
+        else:
+            self._view_token += 1
+            self._view_loading = False
+            self._view_request = None
+            self._view_timer.stop()
+            self._view_snapshot = None
+            self._view_is_list = False
         self.show_file(self.selection[self.sel_index])
 
     def show_file(self, path: str):
@@ -1652,6 +1783,8 @@ class QuickView(QWidget):
         for shortcut in self._vertical_nav_shortcuts:
             shortcut.setEnabled(False)
         self.clear_content()
+        for shortcut in self._vertical_nav_shortcuts:
+            shortcut.setEnabled(SETTINGS["vertical_navigation"])
         log.info("preview: %s", path)
 
         name = os.path.basename(path) or path
@@ -1668,7 +1801,7 @@ class QuickView(QWidget):
             ext = os.path.splitext(path)[1].lower()
             self._image_navigation = mime.startswith("image/") or ext in LAYERED_EXTENSIONS
             for shortcut in self._vertical_nav_shortcuts:
-                shortcut.setEnabled(self._image_navigation)
+                shortcut.setEnabled(SETTINGS["vertical_navigation"])
             # This routing is the sandbox enforcement point. Every branch
             # below hands the file to a jailed worker (show_image, show_pdf,
             # show_anim, show_media) or reads plain bytes (text/fallback).
@@ -1890,22 +2023,17 @@ class QuickView(QWidget):
             ]
         if not self.current_path:
             return []
-        folder = os.path.dirname(self.current_path) or "."
-        try:
-            names = sorted(
-                (n for n in os.listdir(folder) if not n.startswith(".")),
-                key=str.lower,
-            )
-        except OSError:
+        if not self._view_snapshot:
             return []
-        cur = os.path.basename(self.current_path)
-        if cur not in names:
-            return []
-        idx = names.index(cur)
-        return [
-            os.path.join(folder, names[(idx + d) % len(names)])
-            for d in (1, -1)
-        ]
+        directions = ("up", "down") if self._navigation_axis == "vertical" else ("left", "right")
+        paths = []
+        for direction in directions:
+            index = target_index(self._view_snapshot, self.current_path, direction)
+            if index is not None:
+                path = self._view_snapshot[index]["path"]
+                if path != self.current_path and path not in paths:
+                    paths.append(path)
+        return paths
 
     def _prefetch_neighbors(self):
         max_w, max_h = self.image_fit_box()
@@ -2499,7 +2627,7 @@ class QuickView(QWidget):
         for sc in self._nav_shortcuts:
             sc.setEnabled(on)
         for sc in self._vertical_nav_shortcuts:
-            sc.setEnabled(on and self._image_navigation)
+            sc.setEnabled(on and SETTINGS["vertical_navigation"])
 
     def open_find(self):
         """Ctrl+F: reveal the find row, if a PDF is what is showing."""

@@ -614,6 +614,46 @@ GPL-3.0-or-later. See [LICENSE](LICENSE).
 The screenshots show KDE's default *Next* wallpaper and Ghostscript's
 manual, both from the system's own packages.
 
-## Image navigation
 
-Up/Down also browse previous/next files during image previews. They remain available for scrolling in documents.
+## Dolphin display navigation (this fork)
+
+With a single selected file, previews follow Dolphin's displayed order rather than
+alphabetical filesystem order. Left/Right move between displayed items; Up/Down
+move between grid rows. In a one-column list, all four arrows move between items.
+Navigation stops at the view boundaries. Multiple selected files retain sequential
+navigation in the supplied selection order, wrapping at either end.
+
+Up/Down navigation is enabled for all file types by default. To let those keys
+scroll documents instead, add this to `~/.config/quickview/quickview.conf`:
+
+```ini
+[navigation]
+vertical_navigation = false
+```
+
+The environment override is `QUICKVIEW_VERTICAL_NAVIGATION=false`. Restart with
+`systemctl --user restart quickview.service` after changing configuration. Search
+fields temporarily disable navigation shortcuts so editing still works normally.
+
+### Integration and performance
+
+A small persistent system-Python helper reads Dolphin's AT-SPI accessibility view
+on preview opening. It requires the system GI bindings and the Atspi typelib
+(on Arch/CachyOS: `python-gobject` and `at-spi2-core`). It enables the accessibility
+bridge without enabling a screen reader. Qt and GI run in separate processes.
+
+The captured layout includes off-screen rows and is refreshed on each preview
+opening; close/reopen after changing Dolphin's sorting, filters or window layout.
+If the source view is missing or ambiguous, navigation logs a warning instead of
+falling back to an unrelated alphabetical order. Expanded tree descendants and
+non-local views are not currently supported. Terminal previews with one file need
+a matching open Dolphin view for navigation.
+
+The helper sleeps between requests. Snapshots are asynchronous, stale responses
+are discarded, and lookups time out after six seconds. Image prefetching warms
+at most two display neighbors along the latest navigation axis; cache limits
+remain unchanged. Logs include item count and lookup duration.
+
+The user confirmed grid/list navigation and the optimized helper on CachyOS
+Plasma 6.7.5 / Dolphin 26.08.1. Tests cover row navigation, list order, incomplete
+rows, scroll offsets, boundaries, view discovery, and the configuration flag.

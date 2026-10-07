@@ -39,6 +39,8 @@ CONFIG_FILE = os.path.join(CONFIG_DIR, "quickview.conf")
 # The bounds are there so a typo degrades to something usable instead of a
 # daemon that will not start or a cache that eats the disk.
 _SETTINGS = {
+    "vertical_navigation": ("navigation", bool, True, "QUICKVIEW_VERTICAL_NAVIGATION",
+                            None, None),
     "code_style": ("preview", str, "one-dark", "QUICKVIEW_CODE_STYLE",
                    None, None),
     "book_theme": ("preview", str, "paper", "QUICKVIEW_BOOK_THEME",
@@ -90,6 +92,10 @@ pdf_max_pages = 50
 #   builtin      fast: QuickView's own layout, ~50 ms. Text, headings,
 #                tables and images, but no text wrap, headers or EMF logos.
 office_engine = libreoffice
+
+[navigation]
+# Up/Down browse files in every preview. Disable to retain normal vertical scrolling.
+vertical_navigation = true
 
 [appearance]
 # How the panel itself is painted.
@@ -173,7 +179,15 @@ def load(path: str = CONFIG_FILE) -> dict:
             out[name] = default
             continue
         raw = raw.strip()
-        if kind is int:
+        if kind is bool:
+            lowered = raw.lower()
+            if lowered in ("true", "yes", "on", "1"):
+                out[name] = True
+            elif lowered in ("false", "no", "off", "0"):
+                out[name] = False
+            else:
+                out[name] = default
+        elif kind is int:
             try:
                 out[name] = _clamp(int(raw), low, high)
             except ValueError:
