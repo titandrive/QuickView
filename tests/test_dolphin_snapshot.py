@@ -34,8 +34,19 @@ with tempfile.TemporaryDirectory() as folder:
  for _ in range(2):
   result=dolphin_view.snapshot(str(Path(folder,'b.png')))
   assert [Path(i['path']).name for i in result['items']]==names,result
+ # Regression: two windows select the same file, but only the origin was active.
+ other=Node('list',Path(folder).name,[Node('list item',name,selected=name=='b.png',rect=(i*50,10,40,40)) for i,name in enumerate(names)])
+ origin_window=Node('frame',children=[view],active=True)
+ other_window=Node('frame',children=[other],active=False)
+ root.children=[Node('application','Dolphin',[origin_window,other_window])]
+ def preview_takes_focus():
+  origin_window.active=False
+ result=dolphin_view.snapshot(str(Path(folder,'b.png')),preview_takes_focus)
+ assert result['items'][1]['rect'][0]==140,result
+ assert dolphin_view._bound_view is view
  assert calls['bridge']==1
+print('Passed source-view traversal, display order, coordinates, unrelated-view pruning, and single bridge activation.')
+
 for key, old in [('gi', old_gi), ('gi.repository', old_repository)]:
  if old is None:sys.modules.pop(key, None)
  else:sys.modules[key] = old
-print('Passed source-view traversal, display order, coordinates, unrelated-view pruning, and single bridge activation.')

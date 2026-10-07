@@ -1367,6 +1367,7 @@ class QuickView(QWidget):
         self._view_process = None
         self._view_token = 0
         self._view_loading = False
+        self._view_source_wait = False
         self._view_request = None
         self._view_buffer = b""
         self._view_timer = QTimer(self)
@@ -1405,6 +1406,8 @@ class QuickView(QWidget):
         self._view_loading = False
         self._view_request = None
         self._view_timer.stop()
+        self._view_source_wait = False
+        self.setAttribute(Qt.WA_ShowWithoutActivating, False)
         self._view_pending = []
         self.clear_content()
         self.hide()
@@ -1642,6 +1645,7 @@ class QuickView(QWidget):
         def stopped(*_):
             if self._view_process is process:
                 self._view_process = None
+                self._activate_bound_preview()
                 self._view_loading = False
                 self._view_timer.stop()
                 self._view_error = "Dolphin view helper stopped"
@@ -1669,6 +1673,14 @@ class QuickView(QWidget):
                 continue
             if data.get("token") != self._view_token:
                 continue  # A closed preview or a newer selection superseded this request.
+            if data.get("source_ready"):
+                self._activate_bound_preview()
+                continue
+            if data.get("selection_only"):
+                if data.get("error"):
+                    log.warning("selection sync: %s", data["error"])
+                continue
+            self._activate_bound_preview()
             self._view_loading = False
             self._view_timer.stop()
             self._view_snapshot = data.get("items")
@@ -1687,7 +1699,16 @@ class QuickView(QWidget):
                 log.warning("navigation: %s", self._view_error)
                 self._view_pending = []
 
+    def _activate_bound_preview(self):
+        if self._view_source_wait:
+            self._view_source_wait = False
+            self.setAttribute(Qt.WA_ShowWithoutActivating, False)
+            if self.isVisible():
+                self.raise_()
+                self.activateWindow()
+
     def _view_timeout(self):
+        self._activate_bound_preview()
         self._view_loading = False
         self._view_pending = []
         self._view_error = "Dolphin view lookup timed out"
@@ -1702,6 +1723,8 @@ class QuickView(QWidget):
         self._view_is_list = False
         self._view_pending = []
         self._view_loading = True
+        self._view_source_wait = True
+        self.setAttribute(Qt.WA_ShowWithoutActivating, True)
         self._view_error = "Dolphin view snapshot is loading"
         self._view_request = {"token": self._view_token, "path": path}
         self._view_timer.start(6000)
@@ -1727,6 +1750,10 @@ class QuickView(QWidget):
         if target is not None:
             path = self._view_snapshot[target]["path"]
             if path != self.current_path:
+                process = self._view_process
+                if process is not None and process.state() == QProcess.Running:
+                    request = {"action": "select", "token": self._view_token, "path": path}
+                    process.write((json.dumps(request) + "\n").encode())
                 self.selection = [path]
                 self.sel_index = 0
                 self.show_file(path)
@@ -1770,6 +1797,8 @@ class QuickView(QWidget):
         else:
             self._view_token += 1
             self._view_loading = False
+            self._view_source_wait = False
+            self.setAttribute(Qt.WA_ShowWithoutActivating, False)
             self._view_request = None
             self._view_timer.stop()
             self._view_snapshot = None
@@ -1848,7 +1877,8 @@ class QuickView(QWidget):
         self.fit_overlay()
         self.show()
         self.raise_()
-        self.activateWindow()
+        if not self._view_source_wait:
+            self.activateWindow()
 
     def is_pdf(self, path: str) -> bool:
         """Does this file start with %PDF?

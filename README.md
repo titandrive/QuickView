@@ -623,6 +623,11 @@ move between grid rows. In a one-column list, all four arrows move between items
 Navigation stops at the view boundaries. Multiple selected files retain sequential
 navigation in the supplied selection order, wrapping at either end.
 
+For single-file previews, Dolphin selection follows the preview and scrolls the
+selected item into view when supported. Multiple selections are preserved.
+Selection updates validate the captured item before changing it and restore the
+previous selection if an update fails.
+
 Up/Down navigation is enabled for all file types by default. To let those keys
 scroll documents instead, add this to `~/.config/quickview/quickview.conf`:
 
@@ -649,6 +654,9 @@ falling back to an unrelated alphabetical order. Expanded tree descendants and
 non-local views are not currently supported. Terminal previews with one file need
 a matching open Dolphin view for navigation.
 
+The helper captures the active Dolphin window before the preview takes focus,
+so another window showing the same file does not steal the navigation binding.
+
 The helper sleeps between requests. Snapshots are asynchronous, stale responses
 are discarded, and lookups time out after six seconds. Image prefetching warms
 at most two display neighbors along the latest navigation axis; cache limits
@@ -656,4 +664,5 @@ remain unchanged. Logs include item count and lookup duration.
 
 The user confirmed grid/list navigation and the optimized helper on CachyOS
 Plasma 6.7.5 / Dolphin 26.08.1. Tests cover row navigation, list order, incomplete
-rows, scroll offsets, boundaries, view discovery, and the configuration flag.
+rows, scroll offsets, boundaries, view discovery, source-window focus capture,
+selection updates and rollback, and the configuration flag.
