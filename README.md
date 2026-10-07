@@ -613,3 +613,7 @@ GPL-3.0-or-later. See [LICENSE](LICENSE).
 
 The screenshots show KDE's default *Next* wallpaper and Ghostscript's
 manual, both from the system's own packages.
+
+## Image navigation
+
+Up/Down also browse previous/next files during image previews. They remain available for scrolling in documents.

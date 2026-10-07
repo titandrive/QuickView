@@ -1359,6 +1359,17 @@ class QuickView(QWidget):
                 (Qt.Key_Enter, self.open_externally),
             )
         ]
+        # Up/Down browse images without intercepting document scrolling.
+        self._image_navigation = False
+        self._vertical_nav_shortcuts = [
+            QShortcut(QKeySequence(key), self, activated=callback)
+            for key, callback in (
+                (Qt.Key_Up, lambda: self.step_sibling(-1)),
+                (Qt.Key_Down, lambda: self.step_sibling(+1)),
+            )
+        ]
+        for shortcut in self._vertical_nav_shortcuts:
+            shortcut.setEnabled(False)
         QShortcut(
             QKeySequence(Qt.CTRL | Qt.Key_F), self,
             activated=self.open_find,
@@ -1637,6 +1648,9 @@ class QuickView(QWidget):
     def show_file(self, path: str):
         path = os.path.abspath(path)
         self.current_path = path
+        self._image_navigation = False
+        for shortcut in self._vertical_nav_shortcuts:
+            shortcut.setEnabled(False)
         self.clear_content()
         log.info("preview: %s", path)
 
@@ -1652,6 +1666,9 @@ class QuickView(QWidget):
         else:
             mime = self.mime_db.mimeTypeForFile(path).name()
             ext = os.path.splitext(path)[1].lower()
+            self._image_navigation = mime.startswith("image/") or ext in LAYERED_EXTENSIONS
+            for shortcut in self._vertical_nav_shortcuts:
+                shortcut.setEnabled(self._image_navigation)
             # This routing is the sandbox enforcement point. Every branch
             # below hands the file to a jailed worker (show_image, show_pdf,
             # show_anim, show_media) or reads plain bytes (text/fallback).
@@ -2481,6 +2498,8 @@ class QuickView(QWidget):
     def _set_nav_shortcuts(self, on: bool):
         for sc in self._nav_shortcuts:
             sc.setEnabled(on)
+        for sc in self._vertical_nav_shortcuts:
+            sc.setEnabled(on and self._image_navigation)
 
     def open_find(self):
         """Ctrl+F: reveal the find row, if a PDF is what is showing."""
