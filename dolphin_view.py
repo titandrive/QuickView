@@ -9,6 +9,27 @@ _bound_view = None
 _bound_items = {}
 
 
+def search_item_path(child):
+    """Resolve Dolphin's English accessibility Path field without guessing a folder."""
+    name = child.get_name() or ''
+    if not name or os.path.basename(name) != name:
+        return None
+    description = child.get_description() or ''
+    if ', Path ' not in description:
+        return None
+    tail = description.split(', Path ', 1)[1]
+    # Metadata follows the path. Check delimiter boundaries so commas in paths work.
+    ends = [i for i in range(len(tail)) if tail.startswith(', ', i)] + [len(tail)]
+    matches = set()
+    for end in ends:
+        parent = os.path.expanduser(tail[:end])
+        if os.path.isabs(parent):
+            candidate = os.path.join(parent, name)
+            if os.path.exists(candidate):
+                matches.add(candidate)
+    return next(iter(matches)) if len(matches) == 1 else None
+
+
 def snapshot(path, on_source_ready=None):
     import gi
     gi.require_version('Atspi', '2.0')
@@ -48,7 +69,8 @@ def snapshot(path, on_source_ready=None):
             if not captured and role in ('frame', 'window', 'dialog'):
                 active = active or node.get_state_set().contains(Atspi.StateType.ACTIVE)
             if role in ('list', 'table', 'tree', 'tree table'):
-                if name != os.path.basename(folder):
+                search_view = not name
+                if not search_view and name != os.path.basename(folder):
                     return  # Other folders and control lists cannot be this source view.
                 items = []
                 selected = False
@@ -62,16 +84,17 @@ def snapshot(path, on_source_ready=None):
                     # The accessible item name must be an exact filename in this folder.
                     if os.path.basename(item_name) != item_name:
                         continue
-                    item_path = os.path.join(folder, item_name)
-                    if item_name not in filenames:
+                    item_path = search_item_path(child) if search_view else os.path.join(folder, item_name)
+                    if not item_path or (not search_view and item_name not in filenames):
                         continue
                     component = child.get_component_iface()
                     rect = component.get_extents(Atspi.CoordType.SCREEN) if component else None
                     if not rect or rect.width <= 0 or rect.height <= 0:
                         raise RuntimeError('Dolphin did not expose every item rectangle')
                     items.append({'path': item_path, 'source_index': i,
+                                  'search_result': search_view,
                                   'rect': [rect.x, rect.y, rect.width, rect.height]})
-                    if item_name == filename:
+                    if item_path == path:
                         selected = child.get_state_set().contains(Atspi.StateType.SELECTED)
                 if items and any(i['path'] == path for i in items):
                     if node.get_child_count() > 10000:
@@ -126,7 +149,8 @@ def select_path(path):
     index = _bound_items[path]['source_index']
     child = _bound_view.get_child_at_index(index)
     # Do not select a different file if Dolphin's model changed since the snapshot.
-    if child is None or child.get_name() != os.path.basename(path):
+    if (child is None or child.get_name() != os.path.basename(path)
+            or (_bound_items[path].get('search_result') and search_item_path(child) != path)):
         return {'error': 'Dolphin view changed; reopen the preview to refresh it'}
     selection = _bound_view.get_selection_iface()
     if selection is None:

@@ -640,6 +640,14 @@ The environment override is `QUICKVIEW_VERTICAL_NAVIGATION=false`. Restart with
 `systemctl --user restart quickview.service` after changing configuration. Search
 fields temporarily disable navigation shortcuts so editing still works normally.
 
+Search results also follow their displayed order, including files from different
+folders. This currently requires Dolphin to expose each result’s English `Path`
+field in its accessibility description. Unresolvable entries are skipped.
+
+Dolphin’s keyboard cursor outline can remain on the original file even as the
+selection follows the preview; Dolphin does not expose a supported action to move
+that cursor through its file-item accessibility interface.
+
 ### Integration and performance
 
 A small persistent system-Python helper reads Dolphin's AT-SPI accessibility view

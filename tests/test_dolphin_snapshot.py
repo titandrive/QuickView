@@ -9,6 +9,7 @@ class Node:
   self.role,self.name,self.children,self.active,self.selected,self.rect=role,name,list(children),active,selected,rect
  def get_role_name(self):return self.role
  def get_name(self):return self.name
+ def get_description(self):return ""
  def get_child_count(self):return len(self.children)
  def get_child_at_index(self,i):return self.children[i]
  def get_state_set(self):return S(contains=lambda state:self.active if state==1 else self.selected)
@@ -44,6 +45,19 @@ with tempfile.TemporaryDirectory() as folder:
  result=dolphin_view.snapshot(str(Path(folder,'b.png')),preview_takes_focus)
  assert result['items'][1]['rect'][0]==140,result
  assert dolphin_view._bound_view is view
+ # Search results span folders and have an unnamed accessible list.
+ other_folder = Path(folder, 'other, folder');other_folder.mkdir()
+ (other_folder/'b.png').touch()
+ search_children = [Node('list item','b.png',rect=(0,j*30,200,25)) for j in range(2)]
+ for child, parent in zip(search_children, [Path(folder), other_folder]):
+  child.get_description = lambda parent=parent: ', PNG image, Path '+str(parent)+', Modified today'
+ search = Node('list','',search_children)
+ root.children=[Node('application','Dolphin',[Node('frame',children=[search,wrong],active=True)])]
+ result=dolphin_view.snapshot(str(other_folder/'b.png'))
+ assert [i['path'] for i in result['items']]==[str(Path(folder,'b.png')),str(other_folder/'b.png')],result
+ assert dolphin_view._bound_view is search
+ assert all(i['search_result'] for i in result['items'])
+ assert dolphin_view.search_item_path(Node('list item','b.png')) is None
  assert calls['bridge']==1
 print('Passed source-view traversal, display order, coordinates, unrelated-view pruning, and single bridge activation.')
 
