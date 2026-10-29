@@ -38,8 +38,8 @@ just like Quick Look on a multi-file selection.
 - **EPUB books are read, not listed.** The spine is laid out as pages with
   each chapter starting on its own page, and the book's own table of
   contents becomes the sidebar. The page colours are a setting —
-  `book_theme = gruvbox-dark` (or `gruvbox-light`, `sepia`, `dark`, the
-  default `paper`).
+  `book_theme = gruvbox-dark` (or `gruvbox-light`, `catppuccin-macchiato`,
+  `sepia`, `dark`, the default `paper`).
 - **Markdown renders**, with a titlebar button flipping between the
   rendered pages and the highlighted source, and its headings in the
   contents sidebar. It uses the page palette too, so
@@ -131,7 +131,7 @@ is slower than the preview it decorates). Any Pygments style works:
 ```ini
 # ~/.config/quickview/quickview.conf
 [preview]
-code_style = dracula   # gruvbox-dark, nord, monokai, native, …
+code_style = dracula   # gruvbox-dark, nord, monokai, catppuccin-macchiato, …
 ```
 
 See [Settings](#settings) below. Without Pygments installed the preview is
@@ -341,7 +341,7 @@ now; a cached preview is ~2 ms.
 
   A book is something a person reads for minutes rather than glances at, so
   the page has a palette: `book_theme` picks one of paper, sepia, dark,
-  gruvbox-dark and gruvbox-light, and the worker paints the page background,
+  gruvbox-dark, gruvbox-light and catppuccin-macchiato, and the worker paints the page background,
   body text, headings and quotations from it. Only the page is themed — the
   panel around it is application chrome. The theme name is part of the page
   cache key, so switching themes re-renders rather than serving back the
@@ -438,8 +438,8 @@ systemctl --user restart quickview.service
 
 | Setting | Default | What it does |
 |---------|---------|--------------|
-| `[preview] code_style` | `one-dark` | Pygments style for source files |
-| `[preview] book_theme` | `paper` | Page colours for EPUB books and rendered Markdown: `paper`, `sepia`, `dark`, `gruvbox-dark`, `gruvbox-light` |
+| `[preview] code_style` | `one-dark` | Pygments style for source files, or the built-in `catppuccin-macchiato` |
+| `[preview] book_theme` | `paper` | Page colours for EPUB books and rendered Markdown: `paper`, `sepia`, `dark`, `gruvbox-dark`, `gruvbox-light`, `catppuccin-macchiato` |
 | `[preview] text_limit_kb` | `1024` | How much of a text file to read before truncating |
 | `[preview] pdf_max_pages` | `50` | Pages rendered from a PDF or office document |
 | `[preview] office_engine` | `libreoffice` | How docx/odt are laid out: `libreoffice` (exact, ~1-2 s on first open, when installed) or `builtin` (instant, approximate) |

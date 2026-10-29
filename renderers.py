@@ -1137,6 +1137,49 @@ def _shebang_lexer(text: str):
     return None
 
 
+def _catppuccin_macchiato_style():
+    """Catppuccin Macchiato as a Pygments style. Defined here rather than
+    installed: the catppuccin package registers a matplotlib extra on import,
+    which fails against current matplotlib and takes every style lookup with it."""
+    from pygments.style import Style
+    from pygments.token import (Comment, Error, Generic, Keyword, Name, Number,
+                                Operator, Punctuation, String, Text)
+
+    class CatppuccinMacchiato(Style):
+        background_color = "#24273a"
+        styles = {
+            Text: "#cad3f5",
+            Error: "#ed8796",
+            Comment: "italic #939ab7",
+            Comment.Preproc: "#f5bde6",
+            Keyword: "#c6a0f6",
+            Keyword.Constant: "#f5a97f",
+            Keyword.Type: "#eed49f",
+            Name: "#cad3f5",
+            Name.Builtin: "#ed8796",
+            Name.Function: "#8aadf4",
+            Name.Class: "#eed49f",
+            Name.Namespace: "#eed49f",
+            Name.Decorator: "#f5a97f",
+            Name.Tag: "#c6a0f6",
+            Name.Attribute: "#eed49f",
+            Name.Constant: "#f5a97f",
+            String: "#a6da95",
+            String.Escape: "#f5bde6",
+            String.Regex: "#f5bde6",
+            Number: "#f5a97f",
+            Operator: "#91d7e3",
+            Punctuation: "#939ab7",
+            Generic.Heading: "bold #8aadf4",
+            Generic.Subheading: "bold #8aadf4",
+            Generic.Deleted: "#ed8796",
+            Generic.Inserted: "#a6da95",
+            Generic.Emph: "italic",
+            Generic.Strong: "bold",
+        }
+    return CatppuccinMacchiato
+
+
 def highlight_text(source, name: str, limit: int, style_name: str = "one-dark") -> dict:
     """Read a text file and return it with colour spans for its syntax.
 
@@ -1188,7 +1231,8 @@ def highlight_text(source, name: str, limit: int, style_name: str = "one-dark") 
         if lexer is None:
             return out
     try:
-        style = get_style_by_name(style_name)
+        style = _catppuccin_macchiato_style() if style_name == "catppuccin-macchiato" \
+            else get_style_by_name(style_name)
     except ClassNotFound:
         return out  # a style name that does not exist
 
@@ -2584,6 +2628,10 @@ BOOK_THEMES = {
                      "muted": "#a89984"},
     "gruvbox-light": {"bg": "#fbf1c7", "fg": "#3c3836", "head": "#af3a03",
                       "muted": "#7c6f64"},
+    # Catppuccin Macchiato: base/text for the page, mauve headings, subtext0
+    # for quotations.
+    "catppuccin-macchiato": {"bg": "#24273a", "fg": "#cad3f5",
+                             "head": "#c6a0f6", "muted": "#a5adcb"},
 }
 DEFAULT_BOOK_THEME = "paper"
 

@@ -68,12 +68,12 @@ DEFAULT_FILE = """\
 
 [preview]
 # Pygments style for source files: dracula, gruvbox-dark, nord, monokai,
-# native, solarized-dark … anything Pygments ships.
+# native, solarized-dark … anything Pygments ships, plus catppuccin-macchiato.
 code_style = one-dark
 
 # Page colours for EPUB books: paper, sepia, dark, gruvbox-dark,
-# gruvbox-light. Only the page is themed; the panel around it does not
-# change.
+# gruvbox-light, catppuccin-macchiato. Only the page is themed; the panel
+# around it does not change.
 book_theme = paper
 
 # How much of a text file to read, in KiB. Bigger files are shown
@@ -141,7 +141,8 @@ memory_cache_mb = 96
 # The palettes themselves live in renderers.BOOK_THEMES, which runs in the
 # jail — this is the list a person may type, and a test keeps the two equal.
 _CHOICES = {
-    "book_theme": ("paper", "sepia", "dark", "gruvbox-dark", "gruvbox-light"),
+    "book_theme": ("paper", "sepia", "dark", "gruvbox-dark", "gruvbox-light",
+                   "catppuccin-macchiato"),
     # The panel's own colours. Same reasoning as book_theme: a typo here
     # would otherwise leave the window with no palette at all.
     "panel_theme": ("quicklook", "breeze"),
